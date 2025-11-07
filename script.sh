@@ -3,84 +3,84 @@ set -e
 
 echo "🚀 Setting up Claude CLI in Docker..."
 
-# Check if Docker is installed
-if ! command -v docker &> /dev/null; then
-    echo "❌ Docker not found. Please install Docker first."
-    exit 1
-fi
+# Check Docker
+docker ps &>/dev/null || { echo "❌ Docker not available"; exit 1; }
 
 # Create Dockerfile
-cat > /tmp/Dockerfile-claude <<'EOF'
+cat > Dockerfile <<'EOF'
 FROM ubuntu:22.04
-RUN apt-get update && apt-get install -y curl unzip bash ca-certificates && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && \
+    apt-get install -y curl unzip bash ca-certificates && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /root
+
 RUN curl -fsSL https://claude.ai/install.sh | bash
+
 ENV PATH="/root/.local/bin:${PATH}"
-RUN claude --version
-CMD ["/bin/bash", "-c", "exec bash"]
+ENV TERM=xterm-256color
+
+# Pre-configure theme to skip selection
+RUN mkdir -p /root/.config/claude && \
+    echo '{"theme":"dark","onboardingCompleted":true}' > /root/.config/claude/config.json
+
+CMD ["/bin/bash"]
 EOF
 
-# Build the image
+# Build image
 echo "🔨 Building claude-cli:ready image..."
-docker build -f /tmp/Dockerfile-claude -t claude-cli:ready /tmp/
+docker build -t claude-cli:ready .
 
-# Clean up
-rm /tmp/Dockerfile-claude
-
-# Add alias to bashrc
-echo "⚙️  Adding alias to ~/.bashrc..."
+# Create aliases
+echo "⚙️  Adding aliases..."
 sed -i '/alias claude-cli/d' ~/.bashrc 2>/dev/null || true
-echo "alias claude-cli='docker run -it --rm claude-cli:ready'" >> ~/.bashrc
+sed -i '/alias claude-cleanup/d' ~/.bashrc 2>/dev/null || true
 
-# Source bashrc
+echo "alias claude-cli='docker run -it --rm --privileged claude-cli:ready'" >> ~/.bashrc
+echo "alias claude-cleanup='docker ps -a | grep claude-cli | awk '\"'\"'{print \$1}'\"'\"' | xargs -r docker rm -f'" >> ~/.bashrc
+
 source ~/.bashrc
 
+# Test
 echo ""
-echo "✅ Setup complete!"
-echo ""
-echo "🎯 Testing Claude CLI..."
-
-# Test the setup
-if docker run --rm claude-cli:ready claude --version &> /dev/null; then
-    CLAUDE_VERSION=$(docker run --rm claude-cli:ready claude --version)
-    echo "✅ Claude CLI is working! (${CLAUDE_VERSION})"
-else
-    echo "❌ Test failed. Please check Docker logs."
-    exit 1
-fi
+echo "🎯 Testing installation..."
+docker run --rm claude-cli:ready claude --version
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📖 CLAUDE CLI - QUICK REFERENCE"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "🚀 Start Claude:"
+echo "🚀 Start Claude (interactive):"
 echo "   claude-cli"
 echo ""
-echo "🔐 Run Claude with API key (inside container):"
-echo "   ANTHROPIC_API_KEY=\"sk-your-key\" claude chat"
+echo "💬 Inside container - Interactive mode:"
+echo "   claude"
 echo ""
-echo "📋 Check version (inside container):"
+echo "💬 Inside container - Quick mode:"
+echo "   ANTHROPIC_API_KEY=\"sk-key\" claude --print \"Your question\""
+echo ""
+echo "🔄 Continue conversation:"
+echo "   claude --print --continue \"Follow-up\""
+echo ""
+echo "📋 Check version:"
 echo "   claude --version"
 echo ""
-echo "🆘 Get help (inside container):"
+echo "🆘 Get help:"
 echo "   claude --help"
 echo ""
-echo "🚪 Exit Claude:"
-echo "   Type 'exit' or press Ctrl+D"
+echo "🚪 Exit container:"
+echo "   exit  (or Ctrl+D)"
 echo ""
-echo "♻️  Container cleanup:"
-echo "   ✅ Automatically removed after exit (--rm flag)"
+echo "🧹 Cleanup all Claude containers:"
+echo "   claude-cleanup"
+echo ""
+echo "♻️  Auto-cleanup:"
+echo "   ✅ Containers auto-removed after exit (--rm flag)"
 echo "   ✅ No leftover containers"
 echo "   ✅ API keys never persisted"
 echo ""
-echo "🔄 Re-run this setup on other servers:"
-echo "   Just paste this entire script and run it!"
-echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
-echo "🚀 Launching claude-cli now..."
-echo ""
-
-# Auto-launch claude-cli
-exec bash -c "source ~/.bashrc && claude-cli"
+echo "✅ Setup complete! Run: claude-cli"
